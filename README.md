@@ -265,6 +265,7 @@ Full protocol reference: **[NOTES.md](NOTES.md)** and
 ├── rust/src/            # Rust library + bmapctl CLI
 ├── cpp/src/             # C++ library + bmapctl CLI
 ├── docs/                # Architecture guide, device docs
+├── examples/            # Example scripts (e.g. Aware/Quiet toggle hotkey)
 ├── NOTES.md             # Protocol reverse engineering notes
 ├── Makefile             # Build, test, release across all languages
 └── fixtures/            # Captured protocol data
