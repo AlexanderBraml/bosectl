@@ -101,11 +101,18 @@ bosectl anr high            # Noise cancellation mode (QC35)
 bosectl eq 3 0 -2           # EQ: bass/mid/treble
 bosectl buttons set ANC     # Remap programmable button
 bosectl quiet               # Switch to Quiet mode
+bosectl toggle              # Aware <-> Quiet in one connection, prints new mode
+bosectl toggle quiet cinema # Toggle between any two modes
 ```
 
 When `BMAP_MAC` (or Python CLI alias `BOSE_MAC`) is set, also set
 `BMAP_DEVICE` to the matching config key. Device type is auto-detected only
 when the MAC address is auto-detected.
+
+Set `BMAP_CONNECTED_ONLY=1` (Python CLI) to make auto-detection ignore paired
+devices that are not connected. bosectl then fails at once instead of trying
+to reach an absent headset, which is handy in scripts that try several
+headphones.
 
 ### Device Catalog API
 

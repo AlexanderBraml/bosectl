@@ -251,6 +251,17 @@ def cmd_dump(dev):
 
 # ── Usage / Main ─────────────────────────────────────────────────────────────
 
+def cmd_toggle(dev, args):
+    """Switch between two modes over one connection; print the new mode."""
+    if len(args) not in (0, 2):
+        print("Usage: bosectl toggle [MODE_A MODE_B]", file=sys.stderr)
+        sys.exit(1)
+    a, b = (args[0].lower(), args[1].lower()) if args else ("aware", "quiet")
+    target = b if (dev.mode() or "").lower() == a else a
+    dev.set_mode(target)
+    print(target)
+
+
 def usage():
     print(BANNER)
 
@@ -265,6 +276,7 @@ def usage():
     cmd("aware", "Aware — transparency")
     cmd("immersion", "Immersion — spatial audio, head tracking")
     cmd("cinema", "Cinema — spatial audio, fixed stage")
+    cmd("toggle [A B]", "Switch A <-> B (default aware/quiet), print new mode")
     print()
 
     section("Profiles")
@@ -339,9 +351,13 @@ def main():
     # Determine MAC and device type from env vars (None = auto-detect)
     mac = os.environ.get("BOSE_MAC") or os.environ.get("BMAP_MAC") or None
     device_type = os.environ.get("BMAP_DEVICE") or None
+    # Skip paired-but-disconnected devices during auto-detection, so scripts
+    # that try several headsets fail fast instead of paging an absent one.
+    connected_only = os.environ.get("BMAP_CONNECTED_ONLY", "").lower() in ("1", "true", "yes", "on")
 
     try:
-        dev = pybmap.connect(mac=mac, device_type=device_type)
+        dev = pybmap.connect(mac=mac, device_type=device_type,
+                             connected_only=connected_only)
     except BmapError as e:
         print("%sConnection failed:%s %s" % (C_RED, C_RESET, e), file=sys.stderr)
         # A setup mistake or a busy headset is not a Bluetooth problem;
@@ -363,6 +379,8 @@ def main():
             print(dev.battery())
         elif cmd == "current":
             print(dev.mode())
+        elif cmd == "toggle":
+            cmd_toggle(dev, sys.argv[2:])
         elif cmd == "profiles":
             cmd_profiles(dev)
         elif cmd == "profile":

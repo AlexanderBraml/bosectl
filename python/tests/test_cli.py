@@ -197,3 +197,99 @@ def test_busy_connect_skips_bluetooth_hint(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "Headphones busy" in err
     assert "Is Bluetooth on?" not in err
+
+
+# ── toggle ──────────────────────────────────────────────────────────────────
+
+class ToggleDevice:
+    def __init__(self, mode):
+        self._mode = mode
+        self.set_calls = []
+
+    def mode(self):
+        return self._mode
+
+    def set_mode(self, name):
+        self.set_calls.append(name)
+
+
+@pytest.mark.parametrize("current,args,expected", [
+    ("aware", [], "quiet"),
+    ("quiet", [], "aware"),
+    ("immersion", [], "aware"),
+    (None, [], "aware"),
+    ("Quiet", ["quiet", "Cinema"], "cinema"),
+    ("cinema", ["quiet", "cinema"], "quiet"),
+])
+def test_toggle_switches_and_prints_new_mode(capsys, current, args, expected):
+    dev = ToggleDevice(current)
+    cli.cmd_toggle(dev, args)
+    assert dev.set_calls == [expected]
+    assert capsys.readouterr().out == expected + "\n"
+
+
+def test_toggle_rejects_single_mode(capsys):
+    with pytest.raises(SystemExit):
+        cli.cmd_toggle(ToggleDevice("quiet"), ["aware"])
+    assert "Usage" in capsys.readouterr().err
+
+
+# ── BMAP_CONNECTED_ONLY ─────────────────────────────────────────────────────
+
+import pybmap  # noqa: E402
+from pybmap import discovery  # noqa: E402
+
+
+@pytest.mark.parametrize("env,expected", [(None, False), ("1", True), ("true", True), ("0", False)])
+def test_connected_only_env_is_passed_to_connect(monkeypatch, env, expected):
+    seen = {}
+
+    def fake_connect(**kwargs):
+        seen.update(kwargs)
+        raise pybmap.BmapNotFoundError("none")
+
+    monkeypatch.setattr(cli.sys, "argv", ["bosectl", "current"])
+    for var in ("BOSE_MAC", "BMAP_MAC", "BMAP_DEVICE"):
+        monkeypatch.delenv(var, raising=False)
+    if env is None:
+        monkeypatch.delenv("BMAP_CONNECTED_ONLY", raising=False)
+    else:
+        monkeypatch.setenv("BMAP_CONNECTED_ONLY", env)
+    monkeypatch.setattr(cli.pybmap, "connect", fake_connect)
+    with pytest.raises(SystemExit):
+        cli.main()
+    assert seen["connected_only"] is expected
+
+
+def test_connected_only_skips_disconnected_fallback(monkeypatch):
+    scans = []
+
+    def fake_scan(connected_only=False):
+        scans.append(connected_only)
+        return [("00:11:22:33:44:55", "qc_ultra2", False)]
+
+    monkeypatch.setattr(discovery, "_scan_paired_devices", fake_scan, raising=False)
+    if not hasattr(discovery, "subprocess"):
+        pytest.skip("Linux discovery only")
+    assert discovery.find_bmap_device() == ("00:11:22:33:44:55", "qc_ultra2")
+    assert discovery.find_bmap_device(connected_only=True) == (None, None)
+    assert scans == [False, True]
+
+
+def test_connect_connected_only_raises_not_found(monkeypatch):
+    monkeypatch.setattr(pybmap, "find_bmap_device",
+                        lambda connected_only=False: (None, None))
+    with pytest.raises(pybmap.BmapNotFoundError):
+        pybmap.connect(connected_only=True)
+
+
+@pytest.mark.parametrize("modalias,expected", [
+    ("Modalias: bluetooth:v009Ep4082d082F", True),   # Bose (BT SIG ID)
+    ("Modalias: usb:v05A7p4082d0000", True),         # Bose (USB VID)
+    ("Modalias: usb:v054Cp0DF4d0421", False),        # Sony LinkBuds S
+    ("", True),                                      # no Modalias: keep
+])
+def test_bose_vendor_filter(modalias, expected):
+    if not hasattr(discovery, "_is_bose_vendor"):
+        pytest.skip("Linux discovery only")
+    assert discovery._is_bose_vendor("Icon: audio-headset\n\t" + modalias) is expected

@@ -7,7 +7,9 @@
 #           to Aware, resume it when switching back to Quiet.
 #
 # Environment:
-#   PLAYER  playerctl player to control (default: spotify)
+#   PLAYER               playerctl player to control (default: spotify)
+#   BMAP_CONNECTED_ONLY  set to 1 to fail at once if the headphones are not
+#                        connected (used by scripts that try several headsets)
 #
 # Uses `bosectl` from PATH if installed, otherwise falls back to the bosectl
 # script in this repository. Handy to bind to a global keyboard shortcut.
@@ -27,16 +29,13 @@ fi
 control_music="${1:-}"
 player="${PLAYER:-spotify}"
 
-music() {
-    if [[ "$control_music" == "pause" ]]; then
-        playerctl --player="$player" "$1" || true
-    fi
-}
+# One connection: read the mode, switch, print the new mode.
+mode="$("${bosectl[@]}" toggle aware quiet)"
+echo "$mode"
 
-if [[ "$("${bosectl[@]}" current)" == "aware" ]]; then
-    music play
-    "${bosectl[@]}" quiet
-else
-    music pause
-    "${bosectl[@]}" aware
+if [[ "$control_music" == "pause" ]]; then
+    case "$mode" in
+        aware) playerctl --player="$player" pause || true ;;
+        quiet) playerctl --player="$player" play || true ;;
+    esac
 fi

@@ -11,10 +11,12 @@ if sys.platform == "darwin":
     from IOBluetooth import IOBluetoothDevice
     from .catalog import lookup_device
 
-    def find_bmap_device():
+    def find_bmap_device(connected_only=False):
         """Auto-detect a paired, connected BMAP-capable Bluetooth device on macOS.
 
         Prioritizes connected devices over paired-but-disconnected ones.
+        With connected_only, a paired-but-disconnected device is never
+        returned, so callers fail fast instead of paging an absent headset.
         Returns (mac, device_type) tuple, or (None, None) if not found.
         """
         candidates = []
@@ -33,6 +35,9 @@ if sys.platform == "darwin":
             if connected:
                 return (mac, device_type)
 
+        if connected_only:
+            return (None, None)
+
         # Fall back to first paired BMAP device
         for mac, device_type, connected in candidates:
             return (mac, device_type)
@@ -42,20 +47,26 @@ if sys.platform == "darwin":
 else:
     import re
     import subprocess
-    from .catalog import BMAP_UUID, lookup_device
+    from .catalog import BMAP_UUID, BOSE_USB_VID, lookup_device
 
-    def find_bmap_device():
+    def find_bmap_device(connected_only=False):
         """Auto-detect a paired, connected BMAP-capable Bluetooth device (Linux).
 
         Prioritizes connected devices over paired-but-disconnected ones.
+        With connected_only, only connected devices are scanned and a
+        paired-but-disconnected device is never returned, so callers fail
+        fast instead of paging an absent headset.
         Returns (mac, device_type) tuple, or (None, None) if not found.
         """
-        candidates = _scan_paired_devices()
+        candidates = _scan_paired_devices(connected_only)
 
         # Prefer connected devices
         for mac, device_type, connected in candidates:
             if connected:
                 return (mac, device_type)
+
+        if connected_only:
+            return (None, None)
 
         # Fall back to first paired BMAP device
         for mac, device_type, connected in candidates:
@@ -64,12 +75,18 @@ else:
         return (None, None)
 
 
-    def _scan_paired_devices():
-        """Scan paired Bluetooth devices for BMAP-capable headphones."""
+    def _scan_paired_devices(connected_only=False):
+        """Scan paired Bluetooth devices for BMAP-capable headphones.
+
+        With connected_only, list only connected devices, which saves one
+        `bluetoothctl info` call per paired-but-disconnected device. Older
+        bluetoothctl versions ignore the filter; the "Connected: yes" check
+        below still applies.
+        """
         candidates = []
         try:
             result = subprocess.run(
-                ["bluetoothctl", "devices", "Paired"],
+                ["bluetoothctl", "devices", "Connected" if connected_only else "Paired"],
                 capture_output=True, text=True, timeout=5,
             )
             for line in result.stdout.strip().splitlines():
@@ -90,6 +107,10 @@ else:
                 has_bmap = BMAP_UUID in info_text
                 if not (is_audio and has_bmap):
                     continue
+                # The BMAP UUID is not unique to Bose (e.g. Sony LinkBuds S
+                # advertise it too); skip devices of another vendor.
+                if not _is_bose_vendor(info_text):
+                    continue
 
                 connected = "Connected: yes" in info_text
 
@@ -100,6 +121,20 @@ else:
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
         return candidates
+
+
+    # Bose's Bluetooth SIG company ID and USB vendor ID, as seen in Modalias.
+    _BOSE_VENDORS = {("bluetooth", 0x009E), ("bluetooth", BOSE_USB_VID), ("usb", BOSE_USB_VID)}
+
+    def _is_bose_vendor(info_text):
+        """False if the device's Modalias names a vendor other than Bose.
+
+        Devices without a Modalias are accepted, as before.
+        """
+        match = re.search(r"Modalias:\s*(bluetooth|usb):v([0-9A-Fa-f]{4})", info_text)
+        if not match:
+            return True
+        return (match.group(1), int(match.group(2), 16)) in _BOSE_VENDORS
 
 
     def _detect_device_type(info_text):

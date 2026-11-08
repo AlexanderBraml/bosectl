@@ -26,6 +26,7 @@ _bosectl_commands() {
     'aware:Aware — transparency'
     'immersion:Immersion — spatial audio with head tracking'
     'cinema:Cinema — spatial audio with fixed stage'
+    'toggle:Switch between two modes (default aware/quiet)'
 
     # Profiles
     'profiles:List all audio profiles'
@@ -191,6 +192,11 @@ _bosectl() {
         # ── Preset modes: no arguments ──
         quiet|aware|immersion|cinema)
           # No arguments
+          ;;
+
+        # ── toggle: two optional mode names ──
+        toggle)
+          (( CURRENT <= 3 )) && _describe -t modes 'mode' _preset_modes
           ;;
 
         # ── Read-only commands: no arguments ──

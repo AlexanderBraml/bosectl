@@ -41,13 +41,15 @@ from .constants import OP_STATUS
 __version__ = "0.5.0"
 
 
-def connect(mac=None, device_type=None):
+def connect(mac=None, device_type=None, connected_only=False):
     """Connect to a BMAP device.
 
     Args:
         mac: Bluetooth MAC address. Auto-detected if None.
         device_type: Device type string (e.g. "qc_ultra2", "qc35").
                      Required when mac is specified; auto-detected otherwise.
+        connected_only: When auto-detecting, ignore paired devices that
+                     are not connected (fail fast instead of paging them).
 
     Returns:
         BmapConnection context manager.
@@ -60,7 +62,8 @@ def connect(mac=None, device_type=None):
     device_type = device_type or None
 
     if mac is None:
-        detected_mac, detected_type = find_bmap_device()
+        detected_mac, detected_type = (find_bmap_device(connected_only=True)
+                                       if connected_only else find_bmap_device())
         if detected_mac is None:
             raise BmapNotFoundError(
                 "No connected BMAP device found. Pair and connect "
