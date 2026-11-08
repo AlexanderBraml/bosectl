@@ -22,6 +22,81 @@ is a Qt6 system tray app built on the C++ library, and a working reference
 for embedding it: noise cancellation, modes, EQ, and battery reporting to
 the desktop through BlueZ. On Arch it's in the AUR as `bosectl-qt`.
 
+## About this fork
+
+This is a fork of [aaronsb/bosectl](https://github.com/aaronsb/bosectl). It
+adds a few things to the **Python CLI** that make bosectl work well in
+scripts and hotkeys, especially when you own headphones from more than one
+brand. The Rust and C++ libraries are unchanged.
+
+### What this fork changes
+
+- **Non-Bose devices are no longer picked up.** Auto-detection looks for the
+  BMAP Bluetooth UUID, but other headphones advertise it too (e.g. Sony
+  LinkBuds S). bosectl would then treat them as a Bose device and open
+  RFCOMM connections to them. Devices whose `Modalias` names a vendor other
+  than Bose are now skipped.
+- **`BMAP_CONNECTED_ONLY=1` makes bosectl fail fast.** By default,
+  auto-detection falls back to a paired but disconnected Bose device and
+  spends several seconds trying to reach it. With this variable set, only
+  connected devices are considered: bosectl exits in well under a second
+  if no Bose headset is connected. This also avoids tying up the Bluetooth
+  radio while another headset is being controlled.
+- **New `bosectl toggle [A B]` command.** Switches between two modes
+  (default `aware` and `quiet`) over a single connection and prints the new
+  mode, so scripts can react to it. That is about twice as fast as calling
+  `bosectl current` and then setting the mode.
+- **[`examples/toggle-aware.sh`](examples/toggle-aware.sh)** toggles
+  Aware/Quiet with one hotkey. With the `pause` argument it also pauses the
+  music when you switch to Aware and resumes it when you switch back
+  (needs `playerctl`).
+- Shell completion and tests cover the new command and options.
+
+### Installing this fork
+
+Clone the fork instead of upstream and run the installer. It symlinks
+`bosectl` into `/usr/local/bin`:
+
+```bash
+git clone https://github.com/AlexanderBraml/bosectl.git
+cd bosectl
+./linux_install.sh    # or ./macOS_install.sh
+```
+
+If an upstream bosectl is already installed, the installer replaces its
+symlink. Check that the right copy is used:
+
+```bash
+readlink -f "$(command -v bosectl)"   # should point into your fork's clone
+```
+
+Alternatively, install it with pipx: `pipx install ./bosectl/python`.
+
+On Linux, bosectl needs a Python built with Bluetooth socket support.
+Version managers such as mise or pyenv often install a Python without it;
+use your distribution's `/usr/bin/python3` in that case.
+
+### Toggling Bose and Sony headphones with one hotkey
+
+If you also own Sony headphones controlled with
+[`sony-cli`](https://github.com/AlexanderBraml/sony-cli), a small
+wrapper can run both toggle scripts in parallel. Only the headset that is
+actually connected switches; the other script fails within about 100 ms
+and its error is ignored:
+
+```bash
+#!/bin/bash
+# headphones-toggle [pause]
+export BMAP_CONNECTED_ONLY=1
+~/bosectl/examples/toggle-aware.sh "$@" 2>/dev/null & bose=$!
+~/sony-cli/examples/sony-toggle-pause.sh "$@" 2>/dev/null & sony=$!
+wait "$bose"; b=$?
+wait "$sony"; s=$?
+(( b == 0 || s == 0 ))
+```
+
+Adjust the paths to where you cloned the two repositories.
+
 > **This is not an exploit.** We use the BMAP protocol's standard SETGET
 > operator, which the headphones accept without authentication. No keys
 > are extracted, no encryption is broken, no traffic is replayed.
