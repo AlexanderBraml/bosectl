@@ -76,6 +76,27 @@ On Linux, bosectl needs a Python built with Bluetooth socket support.
 Version managers such as mise or pyenv often install a Python without it;
 use your distribution's `/usr/bin/python3` in that case.
 
+### Pause on removal doesn't work on Linux
+
+The headset's *auto-pause* setting (`bosectl autopause on`) makes it send
+an AVRCP pause command when you take it off. The Bose only does this if the
+computer reports that something is playing, and BlueZ can only report that
+if the media player is bridged to it. That bridge is `mpris-proxy`, which
+ships with BlueZ but is not started by default on Linux Mint (and some other
+distributions). Sony headphones send the pause command regardless, which is
+why they work without it.
+
+Run it as a user service, using
+[`examples/mpris-proxy.service`](examples/mpris-proxy.service):
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp examples/mpris-proxy.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now mpris-proxy.service
+bosectl autopause on
+```
+
 ### Toggling Bose and Sony headphones with one hotkey
 
 If you also own Sony headphones controlled with

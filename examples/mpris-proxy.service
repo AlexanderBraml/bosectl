@@ -1,0 +1,11 @@
+[Unit]
+Description=Forward Bluetooth media controls to MPRIS
+After=pipewire.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mpris-proxy
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
